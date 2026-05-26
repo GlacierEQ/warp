@@ -1,23 +1,23 @@
-use crate::ai::agent::AIAgentActionId;
-use crate::ai::blocklist::block::cli_controller::LongRunningCommandControlState;
-use crate::ai::blocklist::history_model::BlocklistAIHistoryModel;
-use crate::features::FeatureFlag;
-use crate::terminal::model::block::AgentInteractionMetadata;
+use std::collections::HashMap;
+use std::io::{sink, Sink};
+use std::sync::Arc;
+
 use parking_lot::FairMutex;
 use session_sharing_protocol::common::{
     OrderedTerminalEvent, OrderedTerminalEventType, Scrollback, WindowSize,
 };
-use std::io::{sink, Sink};
-use std::sync::Arc;
 use warpui::{Entity, ModelContext, SingletonEntity, WeakViewHandle};
 
+use crate::ai::agent::AIAgentActionId;
+use crate::ai::blocklist::block::cli_controller::LongRunningCommandControlState;
+use crate::ai::blocklist::history_model::BlocklistAIHistoryModel;
+use crate::features::FeatureFlag;
 use crate::terminal::event_listener::ChannelEventListener;
 use crate::terminal::model::ansi::{self};
+use crate::terminal::model::block::AgentInteractionMetadata;
 use crate::terminal::shared_session::ai_agent::decode_agent_response_event;
 use crate::terminal::shared_session::{decode_scrollback, SharedSessionStatus};
 use crate::terminal::{TerminalModel, TerminalView};
-
-use std::collections::HashMap;
 
 /// If we end up buffering more than this many events,
 /// this is an indication that we're too far ahead and
@@ -66,6 +66,8 @@ pub struct EventLoop {
 
     /// A buffer to maintain events we receive from the server that are unordered.
     buffer: HashMap<usize, OrderedTerminalEventType>,
+
+    should_suppress_existing_agent_conversation_replay: bool,
 }
 
 impl EventLoop {
@@ -127,6 +129,10 @@ impl EventLoop {
             next_event_no: 0,
             buffer: HashMap::new(),
             catching_up_to_event_no,
+            should_suppress_existing_agent_conversation_replay: matches!(
+                load_mode,
+                SharedSessionInitialLoadMode::AppendFollowupScrollback
+            ),
         };
 
         // Respect the sharer's window size.
@@ -314,11 +320,30 @@ impl EventLoop {
                     self.terminal_model
                         .lock()
                         .set_is_receiving_agent_conversation_replay(true);
+                    if let Some(view) = self.terminal_view.upgrade(ctx) {
+                        let should_suppress_existing_replay =
+                            self.should_suppress_existing_agent_conversation_replay;
+                        view.update(ctx, |view, ctx| {
+                            view.ai_controller().update(ctx, |controller, _| {
+                                controller.set_should_suppress_existing_agent_conversation_replay(
+                                    should_suppress_existing_replay,
+                                );
+                            });
+                        });
+                    }
                 }
                 OrderedTerminalEventType::AgentConversationReplayEnded => {
                     self.terminal_model
                         .lock()
                         .set_is_receiving_agent_conversation_replay(false);
+                    if let Some(view) = self.terminal_view.upgrade(ctx) {
+                        view.update(ctx, |view, ctx| {
+                            view.ai_controller().update(ctx, |controller, _| {
+                                controller
+                                    .set_should_suppress_existing_agent_conversation_replay(false);
+                            });
+                        });
+                    }
                 }
             }
 
@@ -352,5 +377,5 @@ impl Entity for EventLoop {
 }
 
 #[cfg(test)]
-#[path = "event_loop_test.rs"]
+#[path = "event_loop_tests.rs"]
 mod tests;

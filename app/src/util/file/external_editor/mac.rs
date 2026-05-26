@@ -1,16 +1,17 @@
 #![allow(deprecated)]
 
-use instant::Instant;
+use std::fmt::Write;
+use std::path::Path;
 use std::slice;
-use std::{fmt::Write, path::Path};
 
-use cocoa::{
-    base::{id, nil},
-    foundation::{NSAutoreleasePool, NSString},
-};
+use cocoa::base::{id, nil};
+use cocoa::foundation::{NSAutoreleasePool, NSString};
 use command::r#async::Command;
-use warp_core::{channel::ChannelState, AppId};
-use warpui::{platform::mac::make_nsstring, ApplicationBundleInfo};
+use instant::Instant;
+use warp_core::channel::ChannelState;
+use warp_core::AppId;
+use warpui::platform::mac::make_nsstring;
+use warpui::ApplicationBundleInfo;
 
 use super::*;
 
@@ -19,7 +20,7 @@ extern "C" {
     fn get_default_app_bundle_for_file(file_path: id) -> id;
 }
 
-/// The exeutable we use to launch the editor.
+/// The executable we use to launch the editor.
 #[derive(Debug)]
 pub enum OpenFileInEditorMethod {
     // A custom binary (e.g. the code CLI tool for VSCode).
@@ -402,5 +403,5 @@ unsafe fn default_app_to_open_path(file_path: &Path) -> Option<String> {
 }
 
 #[cfg(test)]
-#[path = "mac_test.rs"]
+#[path = "mac_tests.rs"]
 mod tests;
